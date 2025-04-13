@@ -495,7 +495,7 @@ def download_pdf_bill(driver, download_dir):
 
 def extract_html_bill_text(driver, download_dir, bill_name):
     """
-    Extract the HTML bill text from the current page and save it to a file.
+    Extract the HTML bill text from the current page and save it as a text file.
     
     Args:
         driver: WebDriver instance on an HTML bill text page
@@ -547,18 +547,6 @@ def extract_html_bill_text(driver, download_dir, bill_name):
         if html_content:
             # Create a timestamp for the filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            html_filename = f"{bill_name}_{timestamp}.html"
-            
-            # Set up the save path
-            file_path = os.path.join(download_dir, html_filename)
-            
-            # Save the HTML content
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-            
-            logging.info(f"Successfully saved HTML bill text to: {file_path}")
-            
-            # Also save a text-only version for easier reading
             text_filename = f"{bill_name}_{timestamp}.txt"
             text_path = os.path.join(download_dir, text_filename)
             
@@ -569,14 +557,14 @@ def extract_html_bill_text(driver, download_dir, bill_name):
             with open(text_path, 'w', encoding='utf-8') as f:
                 f.write(text_content)
             
-            logging.info(f"Also saved text-only version to: {text_path}")
+            logging.info(f"Saved text version to: {text_path}")
             
-            return file_path
+            return text_path
         else:
-            logging.error("Failed to extract any HTML content")
+            logging.error("Failed to extract any content")
             return None
     except Exception as e:
-        logging.error(f"Error extracting HTML bill text: {e}")
+        logging.error(f"Error extracting bill text: {e}")
         return None
 
 if __name__ == "__main__":
