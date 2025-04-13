@@ -14,6 +14,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime
 import undetected_chromedriver as uc  # pip install undetected-chromedriver
+import PyPDF2
 
 # Suppress urllib3 warnings
 warnings.filterwarnings("ignore", category=Warning)
@@ -349,18 +350,20 @@ def is_html_bill_text(driver):
 
 def download_pdf_bill(driver, download_dir):
     """
-    Download a PDF bill text from the current page.
+    Download a PDF bill text from the current page, convert to text, and delete the PDF.
     
     Args:
         driver: WebDriver instance on a bill text page
         download_dir: Directory to save the PDF
         
     Returns:
-        Path to the downloaded PDF or None if download failed
+        Path to the converted text file or None if download failed
     """
     try:
         # Add random delay
         add_random_delay(2, 5)
+        
+        pdf_path = None
         
         # First look for a direct PDF download link
         try:
@@ -371,7 +374,6 @@ def download_pdf_bill(driver, download_dir):
             pdf_filename = os.path.basename(pdf_url)
             
             logging.info(f"Found PDF link: {pdf_url}")
-            logging.info(f"PDF Filename: {pdf_filename}")
             
             # Simulate human behavior
             driver.execute_script("arguments[0].scrollIntoView(true);", pdf_link)
@@ -381,65 +383,114 @@ def download_pdf_bill(driver, download_dir):
             driver.execute_script("arguments[0].click();", pdf_link)
             
             # Wait for the download to complete
-            logging.info("Waiting for download to complete...")
-            file_path = os.path.join(download_dir, pdf_filename)
+            pdf_path = os.path.join(download_dir, pdf_filename)
             
             # Wait for the file to exist with timeout
-            timeout = 45  # Increased timeout
+            timeout = 45
             start_time = time.time()
             
-            while not os.path.exists(file_path) and time.time() - start_time < timeout:
+            while not os.path.exists(pdf_path) and time.time() - start_time < timeout:
                 time.sleep(1)
             
-            if os.path.exists(file_path):
-                logging.info(f"Successfully downloaded PDF to: {file_path}")
-                return file_path
+            if os.path.exists(pdf_path):
+                try:
+                    # Create text filename from PDF filename
+                    text_filename = os.path.splitext(pdf_filename)[0] + '.txt'
+                    text_path = os.path.join(download_dir, text_filename)
+                    
+                    # Convert PDF to text using PyPDF2
+                    with open(pdf_path, 'rb') as pdf_file:
+                        # Create PDF reader object
+                        pdf_reader = PyPDF2.PdfReader(pdf_file)
+                        
+                        # Extract text from all pages
+                        text_content = []
+                        for page in pdf_reader.pages:
+                            text_content.append(page.extract_text())
+                        
+                        # Write text content to file
+                        with open(text_path, 'w', encoding='utf-8') as text_file:
+                            text_file.write('\n\n'.join(text_content))
+                    
+                    # Delete the original PDF
+                    os.remove(pdf_path)
+                    logging.info(f"Converted PDF to text and deleted original PDF")
+                    
+                    return text_path
+                    
+                except Exception as e:
+                    logging.error(f"Error converting PDF to text: {e}")
+                    # Clean up PDF if conversion fails
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+                    return None
             else:
                 logging.error("Download timed out or failed")
                 return None
+                
         except TimeoutException:
             logging.warning("No direct PDF link found, looking for embedded PDF")
-        
-        # Rest of the function same as original...
-        # If no direct link, look for an embedded PDF object
-        try:
-            pdf_object = driver.find_element(By.XPATH, "//object[@type='application/pdf']")
-            pdf_url = pdf_object.get_attribute('data')
             
-            if pdf_url and pdf_url.endswith('.pdf'):
-                pdf_filename = os.path.basename(pdf_url)
-                logging.info(f"Found PDF object with data URL: {pdf_url}")
+            # Try embedded PDF object
+            try:
+                pdf_object = driver.find_element(By.XPATH, "//object[@type='application/pdf']")
+                pdf_url = pdf_object.get_attribute('data')
                 
-                # Add random delay
-                add_random_delay(1, 3)
-                
-                # Navigate directly to the PDF URL
-                driver.get(pdf_url)
-                
-                # Wait for the download to complete
-                logging.info("Waiting for download to complete...")
-                file_path = os.path.join(download_dir, pdf_filename)
-                
-                # Wait for the file to exist with timeout
-                timeout = 45  # Increased timeout
-                start_time = time.time()
-                
-                while not os.path.exists(file_path) and time.time() - start_time < timeout:
-                    time.sleep(1)
-                
-                if os.path.exists(file_path):
-                    logging.info(f"Successfully downloaded PDF to: {file_path}")
-                    return file_path
-                else:
-                    logging.error("Download timed out or failed")
-                    return None
-        except NoSuchElementException:
-            logging.warning("No PDF object found")
+                if pdf_url and pdf_url.endswith('.pdf'):
+                    pdf_filename = os.path.basename(pdf_url)
+                    pdf_path = os.path.join(download_dir, pdf_filename)
+                    
+                    # Navigate directly to PDF URL
+                    driver.get(pdf_url)
+                    
+                    # Wait for download
+                    timeout = 45
+                    start_time = time.time()
+                    
+                    while not os.path.exists(pdf_path) and time.time() - start_time < timeout:
+                        time.sleep(1)
+                    
+                    if os.path.exists(pdf_path):
+                        try:
+                            # Convert to text using same process as above
+                            text_filename = os.path.splitext(pdf_filename)[0] + '.txt'
+                            text_path = os.path.join(download_dir, text_filename)
+                            
+                            with open(pdf_path, 'rb') as pdf_file:
+                                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                                text_content = []
+                                for page in pdf_reader.pages:
+                                    text_content.append(page.extract_text())
+                                
+                                with open(text_path, 'w', encoding='utf-8') as text_file:
+                                    text_file.write('\n\n'.join(text_content))
+                            
+                            # Delete the original PDF
+                            os.remove(pdf_path)
+                            logging.info(f"Converted PDF to text and deleted original PDF")
+                            
+                            return text_path
+                            
+                        except Exception as e:
+                            logging.error(f"Error converting PDF to text: {e}")
+                            if os.path.exists(pdf_path):
+                                os.remove(pdf_path)
+                            return None
+                    else:
+                        logging.error("Download timed out or failed")
+                        return None
+                        
+            except NoSuchElementException:
+                logging.warning("No PDF object found")
         
         logging.error("Could not find any PDF to download")
         return None
+        
     except Exception as e:
-        logging.error(f"Error downloading PDF: {e}")
+        logging.error(f"Error in PDF download process: {e}")
+        # Clean up PDF if it exists
+        if pdf_path and os.path.exists(pdf_path):
+            os.remove(pdf_path)
         return None
 
 def extract_html_bill_text(driver, download_dir, bill_name):
